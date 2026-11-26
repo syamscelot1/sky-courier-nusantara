@@ -44,6 +44,7 @@ export function createCameraRig(camera, aircraft) {
       aircraftGroup.visible = true;
       if (aircraftParts.canopy) aircraftParts.canopy.visible = true;
       if (aircraftParts.propDisc) aircraftParts.propDisc.visible = true;
+      if (aircraftParts.propBlades) aircraftParts.propBlades.visible = true;
       return;
     }
 
@@ -55,7 +56,10 @@ export function createCameraRig(camera, aircraft) {
       // instead of an empty sky. The glass canopy itself is hidden in
       // this mode — from behind it renders as a dome that blocks the view.
       // The prop disc is hidden too: from this close it fills the frame
-      // as a pale dome; the blades alone read as the propeller.
+      // as a pale dome. The blades are hidden as well: a single blade
+      // frozen mid-spin reads as a black bar in a still frame (the
+      // screenshot), not as a propeller — the orange spinner cone at the
+      // nose still reads as the prop from the cockpit.
       desired.copy(state.position).addScaledVector(forward, -0.9).addScaledVector(up, 1.05);
       camera.position.copy(desired);
       lookTarget.copy(state.position).addScaledVector(forward, 60).addScaledVector(up, 2);
@@ -64,6 +68,7 @@ export function createCameraRig(camera, aircraft) {
       aircraftGroup.visible = true;
       if (aircraftParts.canopy) aircraftParts.canopy.visible = false;
       if (aircraftParts.propDisc) aircraftParts.propDisc.visible = false;
+      if (aircraftParts.propBlades) aircraftParts.propBlades.visible = false;
       return;
     }
 
@@ -71,6 +76,7 @@ export function createCameraRig(camera, aircraft) {
     aircraftGroup.visible = true;
     if (aircraftParts.canopy) aircraftParts.canopy.visible = true;
     if (aircraftParts.propDisc) aircraftParts.propDisc.visible = true;
+    if (aircraftParts.propBlades) aircraftParts.propBlades.visible = true;
     camera.up.set(0, 1, 0);
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(state.quaternion);

@@ -157,6 +157,106 @@ export function surfaceAt(x, z) {
   return null;
 }
 
+// --- Procedural canvas textures (seeded, no Math.random) --------------------
+// A neutral speckle that multiplies with the terrain's vertex colours:
+// it adds grain to the ground without changing its painted zones.
+function makeDetailTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#e8e8e8';
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 5200; i++) {
+    const v = 200 + Math.floor(hash2(i, 61) * 55);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    const s = 1 + hash2(i, 62) * 2;
+    ctx.fillRect(hash2(i, 63) * 256, hash2(i, 64) * 256, s, s);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(170, 170);
+  return tex;
+}
+
+// Water surface: pale streaks on the sea colour, tiled and scrolled slowly
+// in update() so the ocean moves instead of sitting flat.
+function makeWaterTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 900; i++) {
+    const x = hash2(i, 71) * 256;
+    const y = hash2(i, 72) * 256;
+    const len = 6 + hash2(i, 73) * 26;
+    ctx.strokeStyle = hash2(i, 74) > 0.5 ? 'rgba(225,242,252,0.6)' : 'rgba(110,165,205,0.55)';
+    ctx.lineWidth = 1 + hash2(i, 75) * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + len, y + (hash2(i, 76) - 0.5) * 4);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(36, 36);
+  return tex;
+}
+
+// Ocean normal map: fine seeded wave facets (tileable, no Math.random).
+// The facets break the midday sun's specular into scattered glints
+// across the water instead of one flat highlight. Integer-frequency
+// sines only, so the texture tiles seamlessly at any repeat.
+function makeWaterNormalTexture() {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(S, S);
+  // [freqU, freqV, amplitude, seeded phase] — fixed every run.
+  const comps = [
+    [6, 0, 0.30, hash2(11, 1)], [0, 8, 0.26, hash2(12, 2)],
+    [11, 11, 0.20, hash2(13, 3)], [15, -15, 0.14, hash2(14, 4)],
+    [23, 0, 0.08, hash2(15, 5)], [0, 29, 0.06, hash2(16, 6)],
+  ];
+  function heightAt(u, v) {
+    let h = 0;
+    for (const [fu, fv, amp, ph] of comps) {
+      h += Math.sin((u * fu + v * fv + ph) * Math.PI * 2) * amp;
+    }
+    return h;
+  }
+  const strength = 2.0;
+  const du = 1 / S;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const u = x / S;
+      const v = y / S;
+      let nx = (heightAt(u - du, v) - heightAt(u + du, v)) * strength;
+      let ny = (heightAt(u, v - du) - heightAt(u, v + du)) * strength;
+      let nz = 1;
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      nx /= len; ny /= len; nz /= len;
+      const i = (y * S + x) * 4;
+      img.data[i] = Math.round((nx * 0.5 + 0.5) * 255);
+      img.data[i + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+      img.data[i + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(48, 48);
+  return tex;
+}
+
 export function createTerrain(scene) {
   const group = new THREE.Group();
   const clouds = [];
@@ -170,9 +270,12 @@ export function createTerrain(scene) {
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
   const sand = new THREE.Color(0xd9c28a);
+  const wetSand = new THREE.Color(0xb59a68);
   const grass = new THREE.Color(0x5d8a3c);
   const deepGrass = new THREE.Color(0x3f6b2e);
+  const dryGrass = new THREE.Color(0xa8a05a);
   const rock = new THREE.Color(0x8a7f74);
+  const darkRock = new THREE.Color(0x5e564e);
   const snow = new THREE.Color(0xf2f4f6);
   const tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
@@ -181,13 +284,22 @@ export function createTerrain(scene) {
     const h = groundHeight(x, z);
     pos.setY(i, h);
     const n = fbm(x * 0.004 + 11, z * 0.004 + 5);
-    if (h < 4) tmp.copy(sand);
-    else if (h < 110) tmp.copy(grass).lerp(deepGrass, n);
-    else if (h < 190) tmp.copy(grass).lerp(rock, (h - 110) / 80);
-    else if (h < 240) tmp.copy(rock);
+    const patch = fbm(x * 0.0009 + 31, z * 0.0009 + 17);
+    if (h < 1.5) tmp.copy(sand).lerp(wetSand, 0.6);
+    else if (h < 4) tmp.copy(sand).lerp(grass, ((h - 1.5) / 2.5) * 0.35);
+    else if (h < 110) {
+      tmp.copy(grass).lerp(deepGrass, n);
+      // Dry meadows and darker forest patches break up the green wash.
+      if (patch > 0.62) tmp.lerp(dryGrass, (patch - 0.62) * 1.8);
+      else if (patch < 0.38) tmp.lerp(deepGrass, (0.38 - patch) * 1.4);
+    } else if (h < 190) tmp.copy(grass).lerp(rock, (h - 110) / 80);
+    else if (h < 240) tmp.copy(rock).lerp(darkRock, n * 0.5);
     else tmp.copy(rock).lerp(snow, (h - 240) / 45);
     // Rocky ridges catch the light differently.
     if (n > 0.72 && h > 60) tmp.lerp(rock, 0.35);
+    // Fine grain so the ground is not a flat wash of colour.
+    const grain = (hash2(Math.floor(x * 0.35), Math.floor(z * 0.35)) - 0.5) * 0.07;
+    tmp.offsetHSL(0, 0, grain);
     colors[i * 3] = tmp.r;
     colors[i * 3 + 1] = tmp.g;
     colors[i * 3 + 2] = tmp.b;
@@ -196,22 +308,24 @@ export function createTerrain(scene) {
   geo.computeVertexNormals();
   const terrainMesh = new THREE.Mesh(
     geo,
-    new THREE.MeshLambertMaterial({ vertexColors: true }),
+    new THREE.MeshLambertMaterial({ vertexColors: true, map: makeDetailTexture() }),
   );
   terrainMesh.receiveShadow = true;
   group.add(terrainMesh);
 
   // --- Ocean and lake -------------------------------------------------------
+  const waterTex = makeWaterTexture();
+  const waterNormalTex = makeWaterNormalTexture();
   const ocean = new THREE.Mesh(
     new THREE.CircleGeometry(4200, 48),
-    new THREE.MeshPhongMaterial({ color: 0x1d6ea8, transparent: true, opacity: 0.94, shininess: 120 }),
+    new THREE.MeshPhongMaterial({ color: 0x0e5da4, map: waterTex, normalMap: waterNormalTex, normalScale: new THREE.Vector2(0.7, 0.7), transparent: true, opacity: 0.96, shininess: 150, specular: 0xfff2cc }),
   );
   ocean.rotation.x = -Math.PI / 2;
   ocean.position.y = 0.4;
   group.add(ocean);
   const lake = new THREE.Mesh(
     new THREE.CircleGeometry(195, 32),
-    new THREE.MeshPhongMaterial({ color: 0x2f8fc4, shininess: 160 }),
+    new THREE.MeshPhongMaterial({ color: 0x2f8fc4, map: waterTex, shininess: 200, specular: 0xa8d4f0 }),
   );
   lake.rotation.x = -Math.PI / 2;
   lake.position.set(350, 10.2, -450);
@@ -231,14 +345,27 @@ export function createTerrain(scene) {
   // --- Sky dome, sun and clouds ----------------------------------------------
   const dome = buildSkyDome();
   group.add(dome);
-  const sun = new THREE.DirectionalLight(0xffe3b0, 1.35);
-  sun.position.set(1400, 900, -1600);
+  // A crisp sun disc in the direction of the directional light, with the
+  // painted glow in the sky texture behind it.
+  const sunDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(130, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfffbe8, fog: false }),
+  );
+  sunDisc.position.set(1400, 3000, -1600).normalize().multiplyScalar(3600);
+  sunDisc.lookAt(0, 0, 0);
+  scene.add(sunDisc);
+  const sun = new THREE.DirectionalLight(0xfff3d6, 1.9);
+  sun.position.set(1400, 3000, -1600);
   scene.add(sun);
-  const ambient = new THREE.AmbientLight(0xbfd9ff, 0.55);
+  const ambient = new THREE.AmbientLight(0xcfe4ff, 0.55);
   scene.add(ambient);
-  const hemi = new THREE.HemisphereLight(0x9fc4e8, 0x5d7a4a, 0.5);
+  const hemi = new THREE.HemisphereLight(0xa8ccec, 0x6b8a58, 0.7);
   scene.add(hemi);
-  scene.fog = new THREE.Fog(0xcfe0ee, 900, 3800);
+  scene.fog = new THREE.Fog(0xd9eaf6, 900, 3800);
+
+  // Scattered trees on the islands: two instanced meshes (trunks, canopies),
+  // seeded positions kept clear of the airfields, town, corridors, canyon.
+  group.add(buildTrees());
 
   // Lighthouse beam: a slow rotating cone of light, faint by day, the
   // night mission's guiding star after dark.
@@ -257,7 +384,7 @@ export function createTerrain(scene) {
   let nightMode = false;
 
   for (let i = 0; i < 22; i++) {
-    const cloud = buildCloud();
+    const cloud = buildCloud(i);
     const angle = hash2(i, 3) * Math.PI * 2;
     const radius = 500 + hash2(i, 7) * 2600;
     // Clouds ride above the usual flight band (460–600 m) so the plane
@@ -280,18 +407,26 @@ export function createTerrain(scene) {
     dirtStrip: DIRT_STRIP,
     setNight(on) {
       nightMode = on;
-      sun.intensity = on ? 0.12 : 1.35;
+      sun.intensity = on ? 0.12 : 1.9;
       ambient.intensity = on ? 0.14 : 0.55;
-      hemi.intensity = on ? 0.1 : 0.5;
-      scene.fog.color.set(on ? 0x0a1420 : 0xcfe0ee);
+      hemi.intensity = on ? 0.1 : 0.7;
+      scene.fog.color.set(on ? 0x0a1420 : 0xd9eaf6);
       scene.fog.near = on ? 350 : 900;
       scene.fog.far = on ? 2400 : 3800;
       dome.material.map = on ? nightTexture : dayTexture;
       dome.material.needsUpdate = true;
       beamMat.opacity = on ? 0.5 : 0.1;
+      sunDisc.visible = !on;
+      cloudMat.color.set(on ? 0x5a6673 : 0xffffff);
     },
     get night() { return nightMode; },
     update(dt) {
+      waterTex.offset.x += dt * 0.004;
+      waterTex.offset.y += dt * 0.0016;
+      // The normal map drifts at its own rate so the sun glints shimmer
+      // instead of sitting frozen on the water.
+      waterNormalTex.offset.x += dt * 0.002;
+      waterNormalTex.offset.y += dt * 0.0012;
       for (const cloud of clouds) {
         cloud.position.x += cloud.userData.drift * dt;
         if (cloud.position.x > 3600) cloud.position.x = -3600;
@@ -338,7 +473,50 @@ function buildRunway(field, color, paved) {
       g.add(bar);
     }
   }
+  // Touchdown zone bars: pairs either side of the centreline, 150 m and
+  // 300 m in from each threshold.
+  for (const end of [-1, 1]) {
+    for (const dist of [150, 300]) {
+      const along = end * (field.length / 2 - dist);
+      for (const side of [-1, 1]) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(16, 0.15, 2.2), dashMat);
+        bar.position.set(
+          field.x + Math.sin(heading) * along + Math.cos(heading) * side * 8,
+          field.elevation + 0.45,
+          field.z + Math.cos(heading) * along - Math.sin(heading) * side * 8,
+        );
+        bar.rotation.y = -heading + Math.PI / 2;
+        g.add(bar);
+      }
+    }
+  }
   if (paved) {
+    // Edge stripes: continuous white lines along both runway edges.
+    for (const side of [-1, 1]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(field.length - 10, 0.15, 1.6), dashMat);
+      stripe.position.set(
+        field.x + Math.cos(heading) * side * (field.width / 2 - 1.5),
+        field.elevation + 0.45,
+        field.z - Math.sin(heading) * side * (field.width / 2 - 1.5),
+      );
+      stripe.rotation.y = -heading + Math.PI / 2;
+      g.add(stripe);
+    }
+    // PAPI lights: two red, two white, beside the runway 300 m from the
+    // approach (west) threshold.
+    const papiRed = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
+    const papiWhite = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (let k = 0; k < 4; k++) {
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 1.4), k < 2 ? papiRed : papiWhite);
+      const along = -(field.length / 2 - 300);
+      const across = field.width / 2 + 8 + k * 3.5;
+      lamp.position.set(
+        field.x + Math.sin(heading) * along + Math.cos(heading) * across,
+        field.elevation + 1.0,
+        field.z + Math.cos(heading) * along - Math.sin(heading) * across,
+      );
+      g.add(lamp);
+    }
     // Edge lights, warm amber, both sides.
     const lightMat = new THREE.MeshBasicMaterial({ color: 0xffb347 });
     const lightGeo = new THREE.SphereGeometry(0.7, 8, 6);
@@ -420,6 +598,36 @@ function buildTown() {
     house.rotation.y = hash2(i, 28) * Math.PI;
     g.add(house);
   }
+  // A small white mosque with a green dome and minaret, the town landmark
+  // (east of the town block, clear of the houses and the runway corridor).
+  const mosqueY = groundHeight(770, 1160);
+  const mosque = new THREE.Group();
+  const mBase = new THREE.Mesh(
+    new THREE.BoxGeometry(20, 9, 14),
+    new THREE.MeshLambertMaterial({ color: 0xf2ede2 }),
+  );
+  mBase.position.y = 4.5;
+  mosque.add(mBase);
+  const mDome = new THREE.Mesh(
+    new THREE.SphereGeometry(5, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshLambertMaterial({ color: 0x1f7a4d }),
+  );
+  mDome.position.y = 9;
+  mosque.add(mDome);
+  const minaret = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.1, 1.4, 18, 8),
+    new THREE.MeshLambertMaterial({ color: 0xf2ede2 }),
+  );
+  minaret.position.set(12, 9, 0);
+  mosque.add(minaret);
+  const minTop = new THREE.Mesh(
+    new THREE.ConeGeometry(1.8, 3.5, 8),
+    new THREE.MeshLambertMaterial({ color: 0x1f7a4d }),
+  );
+  minTop.position.set(12, 19.5, 0);
+  mosque.add(minTop);
+  mosque.position.set(770, mosqueY, 1160);
+  g.add(mosque);
   return g;
 }
 
@@ -438,6 +646,19 @@ function buildTowerAndHangar() {
   );
   cab.position.set(90, baseY + 37, 1030);
   g.add(cab);
+  // Dark glass band around the cab + a thin antenna on top.
+  const glassBand = new THREE.Mesh(
+    new THREE.CylinderGeometry(7.6, 7.6, 3, 10),
+    new THREE.MeshPhongMaterial({ color: 0x0e2a3f, shininess: 120 }),
+  );
+  glassBand.position.set(90, baseY + 37, 1030);
+  g.add(glassBand);
+  const antenna = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.25, 0.25, 9, 6),
+    new THREE.MeshLambertMaterial({ color: 0x3a3f46 }),
+  );
+  antenna.position.set(90, baseY + 45, 1030);
+  g.add(antenna);
   const hangarY = groundHeight(40, 1120);
   const hangar = new THREE.Mesh(
     new THREE.BoxGeometry(46, 14, 30),
@@ -453,6 +674,13 @@ function buildTowerAndHangar() {
   hangarRoof.rotation.y = Math.PI / 2;
   hangarRoof.position.set(40, hangarY + 14, 1120);
   g.add(hangarRoof);
+  // Big dark hangar door facing the runway.
+  const door = new THREE.Mesh(
+    new THREE.BoxGeometry(34, 10, 0.4),
+    new THREE.MeshLambertMaterial({ color: 0x2e343c }),
+  );
+  door.position.set(40, hangarY + 5, 1120 - 15.2);
+  g.add(door);
   return g;
 }
 
@@ -485,22 +713,76 @@ function buildLighthouse() {
   return g;
 }
 
-function buildCloud() {
+function buildCloud(seed) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.92 });
-  const puffs = 3 + Math.floor(Math.random() * 2);
+  const big = hash2(seed, 81) > 0.72;
+  const puffs = 4 + Math.floor(hash2(seed, 82) * 3);
   for (let i = 0; i < puffs; i++) {
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(14 + Math.random() * 16, 10, 8), mat);
-    puff.position.set((Math.random() - 0.5) * 55, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 22);
-    puff.scale.y = 0.45;
+    const r = (big ? 26 : 14) + hash2(seed, 83 + i) * (big ? 22 : 14);
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), cloudMat);
+    puff.position.set(
+      (hash2(seed, 90 + i) - 0.5) * (big ? 110 : 55),
+      (hash2(seed, 100 + i) - 0.5) * 8,
+      (hash2(seed, 110 + i) - 0.5) * 26,
+    );
+    puff.scale.y = 0.42;
     g.add(puff);
   }
   return g;
 }
 
+// One shared material for all clouds: sunlit white by day, dimmed at night
+// by setNight. Cloud shapes are seeded (no Math.random) so every run
+// renders the same sky.
+const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.94 });
+
+// Scattered trees on the islands: two instanced meshes (trunks, canopies),
+// seeded positions kept clear of the airfields, town, corridors and canyon.
+function buildTrees() {
+  const trunkGeo = new THREE.CylinderGeometry(0.5, 0.85, 6, 6);
+  const canopyGeo = new THREE.ConeGeometry(3.4, 10, 7);
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2e });
+  const canopyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const spots = [];
+  for (let i = 0; i < 420; i++) {
+    const x = (hash2(i, 51) - 0.5) * 3800;
+    const z = (hash2(i, 52) - 0.5) * 3800;
+    const h = groundHeight(x, z);
+    if (h < 8 || h > 150) continue;
+    if (flattenBlend(RUNWAY, x, z) > 0 || flattenBlend(DIRT_STRIP, x, z) > 0) continue;
+    if (x > -40 && x < 780 && z > 1000 && z < 1420) continue; // town
+    if (corridorBlend(RUNWAY, x, z, 1400, 300) > 0.3) continue;
+    if (canyonBlend(x, z) > 0.2) continue;
+    spots.push([x, h, z, 0.7 + hash2(i, 53) * 0.9, hash2(i, 54)]);
+  }
+  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
+  const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, spots.length);
+  const dummy = new THREE.Object3D();
+  const col = new THREE.Color();
+  spots.forEach(([x, h, z, s, r], idx) => {
+    dummy.position.set(x, h + 3 * s, z);
+    dummy.scale.setScalar(s);
+    dummy.rotation.y = r * Math.PI * 2;
+    dummy.updateMatrix();
+    trunks.setMatrixAt(idx, dummy.matrix);
+    dummy.position.set(x, h + 9.5 * s, z);
+    dummy.updateMatrix();
+    canopies.setMatrixAt(idx, dummy.matrix);
+    col.setHSL(0.29 + r * 0.04, 0.5, 0.26 + hash2(idx, 55) * 0.1);
+    canopies.setColorAt(idx, col);
+  });
+  trunks.instanceMatrix.needsUpdate = true;
+  canopies.instanceMatrix.needsUpdate = true;
+  if (canopies.instanceColor) canopies.instanceColor.needsUpdate = true;
+  const g = new THREE.Group();
+  g.add(trunks);
+  g.add(canopies);
+  return g;
+}
+
 function makeSkyTexture(night) {
   const canvas = document.createElement('canvas');
-  canvas.width = 4;
+  canvas.width = night ? 4 : 1024;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
   const grad = ctx.createLinearGradient(0, 0, 0, 256);
@@ -511,14 +793,20 @@ function makeSkyTexture(night) {
     grad.addColorStop(0.92, '#2a2118');
     grad.addColorStop(1, '#1a140e');
   } else {
-    grad.addColorStop(0, '#2f6fc0');
-    grad.addColorStop(0.45, '#7fb2e0');
-    grad.addColorStop(0.72, '#cfe0ee');
-    grad.addColorStop(0.86, '#ffd9a0');
-    grad.addColorStop(1, '#f7b96a');
+    // The horizon sits at v = 0.5 (canvas y = 128), so the warm haze band
+    // is painted right around it, not below the ground like before.
+    // Blazing midday: deep bright blue overhead fading to a pale hazy
+    // blue-white at the horizon — no orange sunset band.
+    grad.addColorStop(0, '#2168c4');
+    grad.addColorStop(0.3, '#6fb4e8');
+    grad.addColorStop(0.45, '#b9dcf0');
+    grad.addColorStop(0.52, '#eef6fa');
+    grad.addColorStop(0.58, '#f2f7fa');
+    grad.addColorStop(0.65, '#eef4f8');
+    grad.addColorStop(1, '#dfeef5');
   }
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 4, 256);
+  ctx.fillRect(0, 0, canvas.width, 256);
   if (night) {
     // A scattering of stars in the upper sky.
     ctx.fillStyle = '#ffffff';
@@ -529,6 +817,22 @@ function makeSkyTexture(night) {
       ctx.fillRect(x, y, 1, 1);
     }
     ctx.globalAlpha = 1;
+  } else {
+    // Bright glare around the midday sun: u = 0.5 faces the sun after
+    // the dome is rotated (see buildSkyDome); sun elevation ~55 deg ->
+    // canvas y ~ 50. The canvas is 4:1, so the gradient is drawn in a
+    // 2:1-scaled context to come out round on the sphere instead of a
+    // vertical pillar.
+    ctx.save();
+    ctx.translate(512, 50);
+    ctx.scale(2, 1);
+    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 46);
+    glow.addColorStop(0, 'rgba(255,252,225,1)');
+    glow.addColorStop(0.35, 'rgba(255,236,180,0.6)');
+    glow.addColorStop(1, 'rgba(255,214,140,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(-46, -46, 92, 92);
+    ctx.restore();
   }
   return new THREE.CanvasTexture(canvas);
 }
@@ -540,6 +844,9 @@ function buildSkyDome() {
     new THREE.SphereGeometry(3800, 24, 16),
     new THREE.MeshBasicMaterial({ map: dayTexture, side: THREE.BackSide, fog: false }),
   );
+  // Rotate the dome so the painted sun glow (u = 0.5, the +X point) sits
+  // at the sun's azimuth: sun at (1400, -1600) -> rotation.y = 0.85 rad.
+  dome.rotation.y = 0.85;
   return dome;
 }
 

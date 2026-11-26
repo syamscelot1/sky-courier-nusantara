@@ -90,3 +90,19 @@ body { font-family: "Segoe UI", system-ui, sans-serif; color: #eef4f8; }
   #hud-minimap { width: 110px; height: 110px; }
   #hud-attitude { width: 96px; height: 96px; }
 }
+
+/* Short viewports (e.g. 1280x720 screenshots): shrink the title card so
+   the big start button stays inside the frame instead of clipping. */
+@media (max-height: 760px) {
+  .overlay-card { padding: 14px 22px; }
+  .title-main { font-size: 40px; margin: 4px 0 2px; }
+  .title-sub { font-size: 16px; }
+  .title-desc { font-size: 13px; margin: 6px 0 10px; }
+  .mission-list { gap: 4px; margin-bottom: 8px; }
+  .mission-btn { padding: 5px 12px; }
+  .mission-btn-name { font-size: 14px; }
+  .mission-btn-tag { font-size: 12px; }
+  .btn { padding: 10px 16px; }
+  .btn-primary { font-size: 16px; }
+  .controls-grid { margin-top: 8px; font-size: 11px; }
+}

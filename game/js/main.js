@@ -100,6 +100,27 @@ function spawnForScene(name) {
       pitch: -0.02, roll: 0, speed: 35, throttle: 0.5, gearDown: false, onGround: false,
     };
   }
+  if (name === 'sea' || name === 'seacockpit') {
+    // Beauty staging for the cover/cockpit screenshots: approach ring 1
+    // from the north, heading due south, so the big golden ring is dead
+    // ahead in the frame — and beyond it the island slopes down to the
+    // south coast, so the glittering sea fills the lower frame under
+    // the midday sun. The rings mission is running (HUD: RING RUN).
+    // Spawn 300 m north of the ring at its altitude; at the 4.5 s
+    // screenshot the plane is ~150 m out, the ring ~11 deg tall —
+    // big and clearly in front of the plane, like the competitor's
+    // gate framing, with the sea still filling the lower frame.
+    // This preset is staging only — the playtest's ring check still
+    // uses ?scene=cover, untouched below.
+    const ring = ringPositions[0];
+    const px = ring.x;
+    const pz = ring.z - 300;
+    return {
+      x: px, y: ring.y + 2, z: pz,
+      heading: headingToward(px, pz, ring.x, ring.z),
+      pitch: -0.02, roll: 0, speed: 35, throttle: 0.5, gearDown: false, onGround: false,
+    };
+  }
   if (name === 'rings') {
     const ring = ringPositions[3];
     const px = 1180;
@@ -169,14 +190,14 @@ function startMission(missionId, spawn) {
 }
 
 function startScenePreset(name) {
-  const missionByScene = { cover: 'rings', rings: 'rings', cockpit: 'rings', landing: 'landing', canyon: 'canyon', night: 'night', photo: 'photo' };
+  const missionByScene = { cover: 'rings', rings: 'rings', cockpit: 'rings', landing: 'landing', canyon: 'canyon', night: 'night', photo: 'photo', sea: 'rings', seacockpit: 'rings' };
   const missionId = missionByScene[name] || 'rings';
   currentMissionId = missionId;
   missionRunner.start(missionId);
   flight = createFlightState(spawnForScene(name));
   gearDown = flight.gearDown;
   gameState = 'flying';
-  cameraMode = name === 'cockpit' ? 'cockpit' : 'chase';
+  cameraMode = (name === 'cockpit' || name === 'seacockpit') ? 'cockpit' : 'chase';
   cameraRig.setMode(cameraMode);
   document.getElementById('title-screen').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
