@@ -1,0 +1,92 @@
+/* style.css — Sky Courier HUD and menus.
+   Instruments glow amber/cyan on dark translucent panels so they read as
+   flown instruments over the bright sky, at full size and shrunk. */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0a141e; }
+body { font-family: "Segoe UI", system-ui, sans-serif; color: #eef4f8; }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.hidden { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- HUD ---------- */
+#hud-flash { position: fixed; inset: 0; z-index: 8; pointer-events: none; background: #ffffff; opacity: 0; }
+#hud-flash.flash { animation: photoflash 0.22s ease-out; }
+@keyframes photoflash { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+.hud-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 16px; gap: 12px; }
+.hud-panel { background: rgba(8, 18, 28, 0.66); border: 1px solid rgba(140, 200, 255, 0.35); border-radius: 10px; padding: 8px 14px; backdrop-filter: blur(2px); }
+.hud-label { font-size: 11px; letter-spacing: 2px; color: #9fc4e8; font-weight: 700; }
+.hud-big { font-size: 40px; line-height: 1; font-weight: 800; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: #ffffff; text-shadow: 0 0 12px rgba(90, 180, 255, 0.8); }
+.hud-unit { font-size: 15px; color: #9fc4e8; font-weight: 600; }
+.hud-sub { font-size: 12px; color: #cfe0ee; margin-top: 4px; font-family: ui-monospace, Consolas, monospace; }
+.hud-heading-value { color: #ffd21c; font-family: ui-monospace, Consolas, monospace; font-size: 15px; }
+.hud-compass-panel { text-align: center; padding-bottom: 4px; }
+#hud-compass { display: block; margin-top: 4px; }
+.hud-bar { height: 8px; background: rgba(255, 255, 255, 0.14); border-radius: 4px; margin-top: 5px; overflow: hidden; width: 150px; }
+.hud-bar-fill { height: 100%; border-radius: 4px; transition: width 0.15s linear; }
+.hud-bar-fill.throttle { background: linear-gradient(90deg, #35c4ff, #ffd21c); }
+.hud-bar-fill.fuel { background: linear-gradient(90deg, #2aff66, #35c4ff); }
+.hud-bar-fill.fuel.low { background: linear-gradient(90deg, #ff5a2a, #ff2a2a); }
+.hud-bar-fill.damage { background: linear-gradient(90deg, #ffd21c, #ff5a2a); width: 0; }
+.hud-bar-fill.damage.high { background: #ff2a2a; }
+
+.hud-center { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); text-align: center; width: 640px; max-width: 80vw; }
+.hud-warning { font-size: 20px; font-weight: 800; color: #ff5a2a; text-shadow: 0 0 14px rgba(255, 60, 20, 0.7); letter-spacing: 1px; opacity: 0; }
+.hud-warning.show { opacity: 1; animation: blink 0.9s steps(2) infinite; }
+.hud-message { margin-top: 10px; font-size: 21px; font-weight: 700; color: #ffffff; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8); opacity: 0; transition: opacity 0.25s; }
+.hud-message.show { opacity: 1; }
+.hud-stall { margin-top: 8px; font-size: 30px; font-weight: 900; color: #ff2a2a; text-shadow: 0 0 18px rgba(255, 40, 20, 0.9); opacity: 0; }
+.hud-stall.show { opacity: 1; animation: blink 0.5s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+
+.hud-bottom { position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-end; padding: 12px 16px; gap: 12px; }
+.hud-attitude-panel { text-align: center; padding: 8px; }
+#hud-attitude { display: block; }
+.hud-mission { flex: 1; max-width: 560px; text-align: center; padding: 10px 18px; }
+.hud-mission-name { font-size: 17px; font-weight: 800; letter-spacing: 2px; color: #ffd21c; }
+.hud-timer { font-family: ui-monospace, Consolas, monospace; color: #eef4f8; font-size: 15px; margin-left: 10px; }
+.hud-objective { font-size: 15px; color: #eef4f8; margin-top: 4px; }
+.hud-target { font-size: 13px; color: #9fc4e8; margin-top: 4px; font-family: ui-monospace, Consolas, monospace; }
+.hud-target-dist { color: #ffd21c; font-weight: 700; }
+.hud-score-line { font-size: 15px; margin-top: 4px; color: #cfe0ee; }
+.hud-score-line span { color: #ffd21c; font-weight: 800; font-size: 19px; font-family: ui-monospace, Consolas, monospace; }
+.hud-right { padding: 8px; text-align: right; }
+#hud-minimap { display: block; border-radius: 8px; }
+.hud-gauge { margin-top: 8px; text-align: left; }
+.hud-gauge .hud-bar { width: 168px; }
+#hud-gear.warn { color: #ff5a2a; font-weight: 800; }
+
+/* ---------- Overlays ---------- */
+.overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(4, 12, 20, 0.55); }
+.overlay-card { background: rgba(8, 20, 32, 0.92); border: 1px solid rgba(140, 200, 255, 0.4); border-radius: 16px; padding: 20px 30px; max-width: 620px; width: calc(100vw - 48px); text-align: center; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); max-height: 94vh; overflow-y: auto; }
+.overlay-card h2 { margin: 0 0 8px; font-size: 34px; letter-spacing: 2px; }
+.overlay-desc { color: #cfe0ee; font-size: 15px; line-height: 1.5; }
+.title-card { max-width: 680px; }
+.title-kicker { letter-spacing: 4px; font-size: 12px; color: #35c4ff; font-weight: 700; }
+.title-main { font-size: 52px; line-height: 1; margin: 6px 0 2px; color: #ffffff; text-shadow: 0 0 26px rgba(53, 196, 255, 0.65); letter-spacing: 3px; }
+.title-sub { font-size: 19px; color: #ffd21c; letter-spacing: 2px; font-weight: 700; }
+.title-desc { color: #cfe0ee; font-size: 14px; line-height: 1.5; margin: 10px 0 14px; }
+.mission-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.mission-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: rgba(53, 196, 255, 0.1); border: 1px solid rgba(53, 196, 255, 0.45); border-radius: 10px; padding: 8px 14px; color: #eef4f8; cursor: pointer; text-align: left; font-family: inherit; }
+.mission-btn:hover { background: rgba(53, 196, 255, 0.22); border-color: #35c4ff; }
+.mission-btn-name { font-weight: 800; letter-spacing: 1px; font-size: 15px; }
+.mission-btn-tag { font-size: 13px; color: #9fc4e8; }
+.btn { display: block; width: 100%; margin-top: 10px; padding: 13px 18px; border-radius: 10px; border: 1px solid rgba(140, 200, 255, 0.5); background: rgba(140, 200, 255, 0.12); color: #eef4f8; font-size: 16px; font-weight: 700; letter-spacing: 1px; cursor: pointer; font-family: inherit; }
+.btn:hover { background: rgba(140, 200, 255, 0.25); }
+.btn-primary { background: #e86a1c; border-color: #ffb347; color: #fff; font-size: 18px; }
+.btn-primary:hover { background: #f07d33; }
+.controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; margin-top: 12px; text-align: left; font-size: 12px; color: #9fc4e8; }
+.controls-grid b { color: #ffd21c; }
+.crash-card h2 { color: #ff5a2a; }
+.crash-reason { font-size: 19px; font-weight: 800; color: #ffd21c; margin: 6px 0; }
+.results-mission { font-size: 18px; font-weight: 800; letter-spacing: 2px; color: #35c4ff; margin: 2px 0 12px; }
+.results-lines { font-size: 16px; line-height: 1.9; color: #eef4f8; font-family: ui-monospace, Consolas, monospace; margin-bottom: 8px; }
+.shot-mode .hud-message { display: none; }
+
+@media (max-width: 760px) {
+  .hud-big { font-size: 28px; }
+  .hud-bar { width: 100px; }
+  .title-main { font-size: 42px; }
+  #hud-minimap { width: 110px; height: 110px; }
+  #hud-attitude { width: 96px; height: 96px; }
+}

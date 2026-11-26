@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sky Courier — Nusantara Run</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+<canvas id="scene" aria-label="Sky Courier: terbangkan pesawat kurir di atas kepulauan Nusantara"></canvas>
+
+<!-- ============ HUD ============ -->
+<div id="hud-flash"></div>
+<div id="hud" class="hidden" aria-hidden="true">
+  <div class="hud-top">
+    <div class="hud-panel hud-speed">
+      <div class="hud-label">KECEPATAN</div>
+      <div class="hud-big"><span id="hud-speed">0</span><span class="hud-unit" id="hud-speed-unit"> kt</span></div>
+      <div class="hud-sub">THROTTLE <span id="hud-throttle-value">0%</span></div>
+      <div class="hud-bar"><div id="hud-throttle-fill" class="hud-bar-fill throttle"></div></div>
+    </div>
+    <div class="hud-panel hud-compass-panel">
+      <div class="hud-label">HEADING <span id="hud-heading" class="hud-heading-value">000</span></div>
+      <canvas id="hud-compass" width="360" height="30"></canvas>
+    </div>
+    <div class="hud-panel hud-alt">
+      <div class="hud-label">KETINGGIAN</div>
+      <div class="hud-big"><span id="hud-alt">0</span><span class="hud-unit" id="hud-alt-unit"> ft</span></div>
+      <div class="hud-sub"><span id="hud-gear">GEAR DOWN</span> <span id="hud-brake"></span></div>
+    </div>
+  </div>
+
+  <div class="hud-center">
+    <div id="hud-warning" class="hud-warning"></div>
+    <div id="hud-message" class="hud-message"></div>
+    <div id="hud-stall" class="hud-stall">STALL!</div>
+  </div>
+
+  <div class="hud-bottom">
+    <div class="hud-panel hud-attitude-panel">
+      <canvas id="hud-attitude" width="132" height="132"></canvas>
+      <div class="hud-label">ATTITUDE</div>
+    </div>
+    <div class="hud-panel hud-mission">
+      <div class="hud-mission-name"><span id="hud-mission-name">RING RUN</span> <span class="hud-timer" id="hud-timer">00:00</span></div>
+      <div id="hud-objective" class="hud-objective"></div>
+      <div class="hud-target"><span id="hud-target"></span> <span id="hud-target-dist" class="hud-target-dist"></span></div>
+      <div class="hud-score-line">SKOR <span id="hud-score">0</span></div>
+    </div>
+    <div class="hud-panel hud-right">
+      <canvas id="hud-minimap" width="168" height="168"></canvas>
+      <div class="hud-gauge">
+        <div class="hud-label">BAHAN BAKAR <span id="hud-fuel-value">100 L</span></div>
+        <div class="hud-bar"><div id="hud-fuel-fill" class="hud-bar-fill fuel"></div></div>
+      </div>
+      <div class="hud-gauge">
+        <div class="hud-label">KERUSAKAN <span id="hud-damage-value">0%</span></div>
+        <div class="hud-bar"><div id="hud-damage-fill" class="hud-bar-fill damage"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TITLE ============ -->
+<div id="title-screen" class="overlay">
+  <div class="overlay-card title-card">
+    <div class="title-kicker">KURIR UDARA KEPULAUAN</div>
+    <h1 class="title-main">SKY COURIER</h1>
+    <div class="title-sub">Nusantara Archipelago Run</div>
+    <p class="title-desc">Terbangkan pesawat kurir melintasi pulau-pulau Nusantara — lewati ring emas,
+      mendarat mulus di runway, dan antar kargo ke strip terpencil. Jaga bahan bakar, jaga kecepatan.</p>
+    <div id="mission-list" class="mission-list"></div>
+    <button id="title-start" class="btn btn-primary">TERBANG — RING RUN</button>
+    <div class="controls-grid">
+      <div><b>W / S</b> throttle</div>
+      <div><b>↑ ↓ ← →</b> pitch &amp; roll</div>
+      <div><b>A / D</b> rudder</div>
+      <div><b>Mouse</b> ikut mengemudi</div>
+      <div><b>B</b> airbrake</div>
+      <div><b>G</b> roda pendarat</div>
+      <div><b>F</b> foto landmark</div>
+      <div><b>C</b> kamera chase / kokpit</div>
+      <div><b>P</b> jeda &nbsp; <b>R</b> ulang &nbsp; <b>M</b> musik</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PAUSE ============ -->
+<div id="pause-screen" class="overlay hidden">
+  <div class="overlay-card">
+    <h2>JEDA</h2>
+    <p class="overlay-desc">Pesawatmu menunggu di udara.</p>
+    <button id="pause-resume" class="btn btn-primary">LANJUT TERBANG</button>
+    <button id="pause-restart" class="btn">ULANG MISI</button>
+    <button id="pause-quit" class="btn">KE MENU UTAMA</button>
+  </div>
+</div>
+
+<!-- ============ CRASH ============ -->
+<div id="crash-screen" class="overlay hidden">
+  <div class="overlay-card crash-card">
+    <h2>✈ PESAWAT JATUH</h2>
+    <p id="crash-reason" class="crash-reason"></p>
+    <p id="crash-score" class="overlay-desc"></p>
+    <button id="crash-retry" class="btn btn-primary">COBA LAGI</button>
+    <button id="crash-title" class="btn">KE MENU UTAMA</button>
+  </div>
+</div>
+
+<!-- ============ RESULTS ============ -->
+<div id="results-screen" class="overlay hidden">
+  <div class="overlay-card results-card">
+    <h2 id="results-title">MISI SELESAI</h2>
+    <p id="results-mission" class="results-mission"></p>
+    <div id="results-lines" class="results-lines"></div>
+    <button id="results-next" class="btn btn-primary">Misi berikutnya →</button>
+    <button id="results-again" class="btn">ULANG MISI INI</button>
+    <button id="results-title-btn" class="btn">KE MENU UTAMA</button>
+  </div>
+</div>
+
+<p id="status" class="sr-only" role="status" aria-live="polite"></p>
+<script src="./vendor/three.min.js"></script>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
