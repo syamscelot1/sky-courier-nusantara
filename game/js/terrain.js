@@ -346,12 +346,18 @@ export function createTerrain(scene) {
   const dome = buildSkyDome();
   group.add(dome);
   // A crisp sun disc in the direction of the directional light, with the
-  // painted glow in the sky texture behind it.
+  // painted glow in the sky texture behind it. Low south-south-east for
+  // the sunset staging: the hero approach flies south toward ring 1, so
+  // the setting sun sits ahead-left over the valley (~30 deg off the
+  // nose, inside the frame), lighting the jet's east flank — the side
+  // the 3/4 camera sees.
+  const SUN_DAY_POS = new THREE.Vector3(1400, 3000, -1600).normalize().multiplyScalar(3600);
+  const SUN_SET_POS = new THREE.Vector3(1800, 700, 3000);
   const sunDisc = new THREE.Mesh(
     new THREE.CircleGeometry(130, 24),
     new THREE.MeshBasicMaterial({ color: 0xfffbe8, fog: false }),
   );
-  sunDisc.position.set(1400, 3000, -1600).normalize().multiplyScalar(3600);
+  sunDisc.position.copy(SUN_DAY_POS);
   sunDisc.lookAt(0, 0, 0);
   scene.add(sunDisc);
   const sun = new THREE.DirectionalLight(0xfff3d6, 1.9);
@@ -418,6 +424,58 @@ export function createTerrain(scene) {
       beamMat.opacity = on ? 0.5 : 0.1;
       sunDisc.visible = !on;
       cloudMat.color.set(on ? 0x5a6673 : 0xffffff);
+    },
+    // Staging only (?scene=sunset): low orange-pink sun ahead over the
+    // green valley, warm light, pink clouds. Restores every value it
+    // touches when switched off, so gameplay lighting is untouched.
+    setSunset(on) {
+      if (on) {
+        sun.intensity = 1.7;
+        sun.color.set(0xffb36b);
+        sun.position.copy(SUN_SET_POS);
+        // Stronger fill than day: the 3/4 camera looks at the jet's
+        // shadow side, and the blue livery must still read blue.
+        ambient.intensity = 0.62;
+        ambient.color.set(0xffd9b0);
+        hemi.intensity = 0.7;
+        hemi.color.set(0xffc890);
+        hemi.groundColor.set(0x54683f);
+        scene.fog.color.set(0xf0a878);
+        scene.fog.near = 900;
+        scene.fog.far = 3800;
+        dome.material.map = sunsetTexture;
+        dome.material.needsUpdate = true;
+        // Blob direction is (cos ry, 0, -sin ry); ry = -1.03 puts the
+        // painted glow at the sunset azimuth, south-south-east.
+        dome.rotation.y = -1.03;
+        sunDisc.visible = true;
+        sunDisc.position.copy(SUN_SET_POS);
+        sunDisc.lookAt(0, 0, 0);
+        sunDisc.material.color.set(0xffcf7d);
+        sunDisc.scale.setScalar(1.5);
+        cloudMat.color.set(0xffd9c2);
+      } else {
+        sun.intensity = 1.9;
+        sun.color.set(0xfff3d6);
+        sun.position.set(1400, 3000, -1600);
+        ambient.intensity = 0.55;
+        ambient.color.set(0xcfe4ff);
+        hemi.intensity = 0.7;
+        hemi.color.set(0xa8ccec);
+        hemi.groundColor.set(0x6b8a58);
+        scene.fog.color.set(0xd9eaf6);
+        scene.fog.near = 900;
+        scene.fog.far = 3800;
+        dome.material.map = dayTexture;
+        dome.material.needsUpdate = true;
+        dome.rotation.y = 0.85;
+        sunDisc.visible = true;
+        sunDisc.position.copy(SUN_DAY_POS);
+        sunDisc.lookAt(0, 0, 0);
+        sunDisc.material.color.set(0xfffbe8);
+        sunDisc.scale.setScalar(1);
+        cloudMat.color.set(0xffffff);
+      }
     },
     get night() { return nightMode; },
     update(dt) {
@@ -780,7 +838,9 @@ function buildTrees() {
   return g;
 }
 
-function makeSkyTexture(night) {
+function makeSkyTexture(mode) {
+  const night = mode === 'night';
+  const sunset = mode === 'sunset';
   const canvas = document.createElement('canvas');
   canvas.width = night ? 4 : 1024;
   canvas.height = 256;
@@ -792,6 +852,16 @@ function makeSkyTexture(night) {
     grad.addColorStop(0.78, '#16283e');
     grad.addColorStop(0.92, '#2a2118');
     grad.addColorStop(1, '#1a140e');
+  } else if (sunset) {
+    // Low sun over a green valley: indigo overhead, magenta mid-sky,
+    // orange-pink band right at the horizon (v = 0.5, canvas y = 128).
+    grad.addColorStop(0, '#232a63');
+    grad.addColorStop(0.26, '#7a4a8c');
+    grad.addColorStop(0.4, '#e86a6a');
+    grad.addColorStop(0.48, '#ff9a4d');
+    grad.addColorStop(0.54, '#ffd28a');
+    grad.addColorStop(0.62, '#f7c98a');
+    grad.addColorStop(1, '#e8b083');
   } else {
     // The horizon sits at v = 0.5 (canvas y = 128), so the warm haze band
     // is painted right around it, not below the ground like before.
@@ -817,6 +887,19 @@ function makeSkyTexture(night) {
       ctx.fillRect(x, y, 1, 1);
     }
     ctx.globalAlpha = 1;
+  } else if (sunset) {
+    // Wide soft glow hugging the horizon at the sun's azimuth (u = 0.5),
+    // low like a setting sun — not a tight midday disc.
+    ctx.save();
+    ctx.translate(512, 122);
+    ctx.scale(2, 1);
+    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 110);
+    glow.addColorStop(0, 'rgba(255,214,140,1)');
+    glow.addColorStop(0.4, 'rgba(255,150,90,0.7)');
+    glow.addColorStop(1, 'rgba(255,120,80,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(-110, -110, 220, 220);
+    ctx.restore();
   } else {
     // Bright glare around the midday sun: u = 0.5 faces the sun after
     // the dome is rotated (see buildSkyDome); sun elevation ~55 deg ->
@@ -836,8 +919,9 @@ function makeSkyTexture(night) {
   }
   return new THREE.CanvasTexture(canvas);
 }
-const dayTexture = makeSkyTexture(false);
-const nightTexture = makeSkyTexture(true);
+const dayTexture = makeSkyTexture('day');
+const nightTexture = makeSkyTexture('night');
+const sunsetTexture = makeSkyTexture('sunset');
 
 function buildSkyDome() {
   const dome = new THREE.Mesh(

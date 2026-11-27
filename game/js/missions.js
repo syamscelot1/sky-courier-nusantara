@@ -112,7 +112,18 @@ export function createMissionRunner(scene, world, onEvent) {
   const photoTargets = [];
   const ringGeo = new THREE.TorusGeometry(14, 1.3, 10, 28);
   const gateGeo = new THREE.TorusGeometry(12, 1.1, 10, 28);
-  const matNext = new THREE.MeshBasicMaterial({ color: 0xffc21c });
+  // Ring visual only (position, radius, base geometry and pass logic are
+  // untouched): the active ring burns brighter gold, wrapped in two
+  // static additive halos — a tight glow hugging the torus and a wide
+  // faint aura — so it reads as an energy ring, not a plain torus. Both
+  // halos are static (no time-based pulse): the dossier stays
+  // deterministic. They are children of the ring mesh, so they inherit
+  // its position, rotation and scale, and hide with it.
+  const ringGlowGeo = new THREE.TorusGeometry(14, 3.0, 10, 28);
+  const ringAuraGeo = new THREE.TorusGeometry(14, 5.0, 10, 28);
+  const matGlow = new THREE.MeshBasicMaterial({ color: 0xffb700, transparent: true, opacity: 0.30, blending: THREE.AdditiveBlending, depthWrite: false });
+  const matAura = new THREE.MeshBasicMaterial({ color: 0xff9d00, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false });
+  const matNext = new THREE.MeshBasicMaterial({ color: 0xffd94d });
   const matIdle = new THREE.MeshBasicMaterial({ color: 0x8a7a4a, transparent: true, opacity: 0.55 });
   const matDone = new THREE.MeshBasicMaterial({ color: 0x2aff66, transparent: true, opacity: 0.7 });
   const matOrange = new THREE.MeshBasicMaterial({ color: 0xff6b2d });
@@ -180,8 +191,14 @@ export function createMissionRunner(scene, world, onEvent) {
       const mesh = new THREE.Mesh(ringGeo, matIdle.clone());
       mesh.position.copy(pos);
       mesh.rotation.y = Math.PI / 2;
+      const glow = new THREE.Mesh(ringGlowGeo, matGlow);
+      glow.visible = false;
+      mesh.add(glow);
+      const aura = new THREE.Mesh(ringAuraGeo, matAura);
+      aura.visible = false;
+      mesh.add(aura);
       markerGroup.add(mesh);
-      rings.push({ mesh, position: pos, passed: false });
+      rings.push({ mesh, glow, aura, position: pos, passed: false });
     }
   }
 
@@ -205,8 +222,14 @@ export function createMissionRunner(scene, world, onEvent) {
       ring.mesh.visible = current.id === 'rings' || current.id === 'free';
       ring.passed = false;
       ring.mesh.material = matIdle.clone();
+      ring.glow.visible = false;
+      ring.aura.visible = false;
     }
-    if (current.id === 'rings' && rings[0]) rings[0].mesh.material = matNext.clone();
+    if (current.id === 'rings' && rings[0]) {
+      rings[0].mesh.material = matNext.clone();
+      rings[0].glow.visible = true;
+      rings[0].aura.visible = true;
+    }
     for (const target of photoTargets) {
       target.mesh.visible = current.id === 'photo';
       target.done = false;
@@ -249,6 +272,8 @@ export function createMissionRunner(scene, world, onEvent) {
           target.passed = true;
           target.mesh.material = matDone.clone();
           target.mesh.scale.setScalar(1);
+          target.glow.visible = false;
+          target.aura.visible = false;
           score += 100;
           event = 'ring';
           onEvent && onEvent('ring', { index: ringIndex, score });
@@ -257,6 +282,8 @@ export function createMissionRunner(scene, world, onEvent) {
             event = finish();
           } else if (rings[ringIndex]) {
             rings[ringIndex].mesh.material = matNext.clone();
+            rings[ringIndex].glow.visible = true;
+            rings[ringIndex].aura.visible = true;
           }
         }
       }

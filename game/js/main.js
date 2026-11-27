@@ -6,6 +6,9 @@
 //   ?scene=cover    chase view, ring run, ring + runway in frame
 //   ?scene=rings    mid-route, about to thread a ring
 //   ?scene=landing  final approach, gear down, runway ahead
+//   ?scene=sunset   hero cover: 3/4 rear view, blue-orange jet, long
+//                   afterburner, sunset over the green valley, big golden
+//                   ring 1 ahead, runway visible past the ring (rings)
 //   ?scene=cockpit  cockpit camera, ring ahead, instruments lit
 //   ?mission=rings|landing|cargo|free  (default rings)
 import { createInput } from './input.js';
@@ -33,7 +36,10 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 9000);
 const world = createTerrain(scene);
-const aircraft = buildAircraft();
+// The blue-orange livery is the default in every scene — cover, landing,
+// cockpit, title and gameplay. Only the sunset LIGHTING stays staging-only
+// (?scene=sunset, world.setSunset below); daylight is the default light.
+const aircraft = buildAircraft({ livery: 'default' });
 scene.add(aircraft.group);
 const hud = createHud();
 const audio = createAudio();
@@ -138,6 +144,35 @@ function spawnForScene(name) {
       speed: 50, throttle: 0.35, gearDown: true, onGround: false,
     };
   }
+  if (name === 'sunset') {
+    // The hero cover: the jet flies SOUTH toward ring 1 over the green
+    // valley, gear up, near-full throttle so the long afterburner is
+    // lit — the 3/4 camera, the sunset ahead-left, the big golden ring
+    // dead ahead. The runway sits ~370 m past the ring (south-west), so
+    // it reads in the same frame below the ring, not as the target:
+    // the ring is the hero, the runway is the backdrop. Spawned 300 m
+    // north of the ring so the shot lands ~5 sim-seconds in, when the
+    // ring has rotated to face the camera as a full circle (like the
+    // ring-fix cover: ring 1 at ~68 m). Approach speed and throttle copy
+    // the proven ring-fix recipe (300 m out, 35 m/s, throttle 0.5–0.6):
+    // the screenshot lands ~1–2 s after the 160 m trigger, and a faster
+    // approach overshoots the ring before the capture lands — throttle
+    // 0.85 was tried and the plane had already threaded ring 1 (score
+    // 100, ring 2 ahead) by shot time. Throttle 0.6 still lights the
+    // long boosted afterburner (~4.5 m flames). The approach comes in
+    // 50 m east of the ring, heading south-south-west: the runway lies
+    // ahead-left of the flight path, so its strip crosses the lower
+    // frame — dead south it sat behind the jet's shoulder, only a
+    // corner of it showing at the bottom edge.
+    const ring = ringPositions[0];
+    const px = ring.x + 50;
+    const pz = ring.z - 300;
+    return {
+      x: px, y: ring.y + 2, z: pz,
+      heading: headingToward(px, pz, ring.x, ring.z),
+      pitch: -0.02, roll: 0, speed: 35, throttle: 0.6, gearDown: false, onGround: false,
+    };
+  }
   if (name === 'canyon') {
     const gates = missionRunner.canyonGatePositions;
     const gate = gates[0];
@@ -181,6 +216,9 @@ function startMission(missionId, spawn) {
   resultsShown = false;
   gameState = 'flying';
   cameraRig.setMode(cameraMode);
+  cameraRig.setCloseUp(false); // gameplay always uses the default chase camera
+  cameraRig.setQuarter(false);
+  aircraft.boostAfterburner = false;
   document.getElementById('title-screen').classList.add('hidden');
   document.getElementById('results-screen').classList.add('hidden');
   document.getElementById('crash-screen').classList.add('hidden');
@@ -190,7 +228,7 @@ function startMission(missionId, spawn) {
 }
 
 function startScenePreset(name) {
-  const missionByScene = { cover: 'rings', rings: 'rings', cockpit: 'rings', landing: 'landing', canyon: 'canyon', night: 'night', photo: 'photo', sea: 'rings', seacockpit: 'rings' };
+  const missionByScene = { cover: 'rings', rings: 'rings', cockpit: 'rings', landing: 'landing', canyon: 'canyon', night: 'night', photo: 'photo', sea: 'rings', seacockpit: 'rings', sunset: 'rings' };
   const missionId = missionByScene[name] || 'rings';
   currentMissionId = missionId;
   missionRunner.start(missionId);
@@ -199,6 +237,19 @@ function startScenePreset(name) {
   gameState = 'flying';
   cameraMode = (name === 'cockpit' || name === 'seacockpit') ? 'cockpit' : 'chase';
   cameraRig.setMode(cameraMode);
+  // Staging-only close chase for the cover + landing screenshots: the
+  // bush plane fills a large part of the frame, like the competitor's
+  // close chase shot. Gameplay never takes this path — startMission and
+  // showTitle both reset it to false, so the default chase camera
+  // players fly with is unchanged.
+  cameraRig.setCloseUp(name === 'sea' || name === 'landing');
+  // Sunset staging (?scene=sunset): 3/4 rear-side camera, low orange-pink
+  // sun ahead-left, long afterburner. missionRunner.start() above calls
+  // setNight(false), so setSunset runs after it to win. All three flags
+  // are reset by startMission/showTitle — gameplay never sees them.
+  cameraRig.setQuarter(name === 'sunset');
+  aircraft.boostAfterburner = name === 'sunset';
+  if (name === 'sunset') world.setSunset(true);
   document.getElementById('title-screen').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
   document.body.classList.add('shot-mode');
@@ -207,6 +258,9 @@ function startScenePreset(name) {
 function showTitle() {
   gameState = 'title';
   cameraRig.setMode('orbit');
+  cameraRig.setCloseUp(false); // gameplay always uses the default chase camera
+  cameraRig.setQuarter(false);
+  aircraft.boostAfterburner = false;
   document.getElementById('title-screen').classList.remove('hidden');
   document.getElementById('hud').classList.add('hidden');
   // A parked plane on the runway for the title backdrop.
